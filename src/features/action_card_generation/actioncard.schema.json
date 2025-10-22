@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Action Card Recommendations",
+  "type": "object",
+  "properties": {
+    "recommendations": {
+      "description": "최종적으로 생성된 실행 카드 목록. 정보가 충분할 때만 채워집니다.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "what": { "type": "string" },
+          "where": { "type": ["array", "string"], "items": { "type": "string" } },
+          "how": { "type": ["array", "string"], "items": { "type": "string" } },
+          "copy": { "type": ["array", "string"], "items": { "type": "string" } },
+          "kpi": { "type": "object" },
+          "risks": { "type": ["array", "string"], "items": { "type": "string" } },
+          "evidence": { "type": ["array", "string"], "items": { "type": "string" } }
+        },
+        "required": ["title", "what"]
+      }
+    },
+    "tool_calls": {
+      "description": "실행 카드 생성을 위해 추가 정보가 필요할 때 호출할 도구 목록. 정보가 충분하면 이 필드는 생략합니다.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tool_name": {
+            "type": "string",
+            "description": "호출할 도구의 이름",
+            "enum": ["data_analyzer", "rag_searcher"]
+          },
+          "query": {
+            "type": "string",
+            "description": "해당 도구에 전달할 구체적인 질문"
+          }
+        },
+        "required": ["tool_name", "query"]
+      }
+    }
+  },
+  "required": ["recommendations"]
+}

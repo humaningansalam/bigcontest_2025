@@ -1,0 +1,24 @@
+# 사용한 API 목록
+# - openai_api
+# - gemini_api
+# - tavily_api
+
+# python 버전: 3.10 이상 (3.10.18로 테스트됨)
+
+# 필수 패키지 목록
+numpy
+streamlit
+pandas
+tabulate
+python-dotenv
+tavily-python
+charset-normalizer
+openpyxl
+
+# LangChain 패키지 (가상 환경용 최종 검증 버전)
+langchain==0.2.10
+langchain-core==0.2.23
+langchain-community==0.2.10
+langgraph==0.1.6
+langchain-openai==0.1.9
+langchain-experimental==0.0.62
