@@ -72,6 +72,10 @@ def _perform_search(client, query: str, collection_types: list[str], n_results: 
     """ 실제 ChromaDB 검색을 수행하고 원본 결과 리스트를 반환합니다."""
     all_results = []
     seen_docs = set()
+
+    if collection_types is None:
+        collection_types = ["strategy", "guide", "trend", "case", "local"] 
+
     for ctype in collection_types:
         collection_name = COLLECTIONS.get(ctype)
         if not collection_name: continue
