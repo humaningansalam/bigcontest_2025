@@ -15,6 +15,7 @@ from src.core.common_tools.rag_search_tool import rag_search_tool
 from src.features.profile_management.tool import get_profile, update_profile
 from src.features.data_analysis.tool import data_analysis_tool
 from src.features.action_card_generation.tool import generate_action_card
+from src.features.video_recommendation.tool import video_recommender_tool
 from src.services.data_service import data_service
 from src.core.intent_classifier import classify_intent
 from .planner_prompt import build_planner_prompt
@@ -37,6 +38,7 @@ tools = {
     "get_profile": get_profile,
     "update_profile": update_profile,
     "rag_searcher": rag_search_tool,
+    "video_recommender": video_recommender_tool,
 }
 
 # --- Router Node ---
@@ -55,6 +57,13 @@ def router_node(state: AgentState) -> dict:
             "past_steps": []
         }
     
+    # 동영상 추천
+    elif intent == "video_recommendation":
+        print("--- [Router] 동영상 추천 도구 직접 호출 결정 ---")
+        plan = [f"[Tool: video_recommender] {user_query}"]
+        return {"next_node": "executor", "plan": plan, "past_steps": []}
+
+
     # 복합적인 분석이 필요할 때만 Planner 호출
     elif intent in ["data_analysis", "web_search", "marketing_idea", "rag_search"]:
         print("--- [Router] Planner 호출 결정 ---")
@@ -99,12 +108,26 @@ def executor_node(state: AgentState):
     if tool_name in tools:
         tool = tools[tool_name]
         try:
+            # [최종 수정] 각 도구의 Pydantic 모델에 맞는 정확한 인자 딕셔너리 생성
             invoke_args = {}
+            user_input_query = state["messages"][-1].content # 사용자의 원본 질문
+
             if tool_name == "data_analyzer":
                 invoke_args = {"query": query, "store_id": state.get("current_profile", {}).get("profile_id")}
+            
             elif tool_name == "action_card_generator":
-                invoke_args = {"user_query": state["messages"][-1].content, "profile": state.get("current_profile")}
-            else: 
+                # 이 도구는 Planner의 지시사항(query)이 아닌 사용자의 원본 질문(user_input_query)을 받도록 설계했었음
+                invoke_args = {"user_query": user_input_query, "profile": state.get("current_profile")}
+
+            elif tool_name == "video_recommender":
+                # 이 도구도 사용자의 원본 질문을 기반으로 개인화 추천
+                invoke_args = {"user_query": user_input_query, "profile": state.get("current_profile")}
+
+            elif tool_name == "marketing_idea_generator":
+                # 이 도구는 Planner가 정제한 지시사항(query)을 주제(topic)로 받음
+                invoke_args = {"topic": query}
+
+            else: # web_searcher, rag_search_tool 등 'query' 인자만 받는 기본 도구들
                 invoke_args = {"query": query}
             
             result = tool.invoke(invoke_args)
@@ -112,7 +135,8 @@ def executor_node(state: AgentState):
 
             # Pandas Agent 또는 Action Card Generator가 최종 답변을 생성하면 바로 종료
             if (tool_name == "data_analyzer" and "Final Answer:" in past_step_result) or \
-               (tool_name == "action_card_generator"):
+               (tool_name == "action_card_generator") or \
+               (tool_name == "video_recommender"):
                 
                 final_content = past_step_result
                 if "Final Answer:" in past_step_result:

@@ -37,7 +37,11 @@ examples = [
     {"input": "재방문율 30% 이하 매장 특성 분석", "output": "data_analysis"},
     {"input": "2025년 카페 트렌드", "output": "web_search"},
     {"input": "신규 고객 유치 아이디어", "output": "marketing_idea"},
+    {"input": "도움될만한 영상 추천해줘", "output": "video_recommendation"},
+    {"input": "마케팅 관련 유튜브 영상 찾아줘", "output": "video_recommendation"},
+    {"input": "신규 고객 유치 전략에 대한 동영상 없어?", "output": "video_recommendation"},
     {"input": "안녕", "output": "greeting"},
+
 ]
 
 # 각 예시를 포맷팅할 템플릿 정의
@@ -67,6 +71,7 @@ final_prompt = ChatPromptTemplate.from_messages(
 - `data_analysis`: 일반적인 조건으로 데이터를 분석 요청.
 - `web_search`: 외부 정보, 최신 트렌드, 경쟁사 등을 검색 요청.
 - `marketing_idea`: 창의적인 마케팅 아이디어를 생성 요청.
+- `video_recommendation`: 주제와 관련된 학습용 동영상 추천을 요청.
 - `greeting`: 간단한 인사나 대화 시작.
 - `unknown`: 위 카테고리에 해당하지 않는 질문.
 """
@@ -106,7 +111,8 @@ def classify_intent(user_query: str) -> str:
             return "marketing_idea"
         if any(k in q for k in ["안녕", "hi", "hello"]):
             return "greeting"
-            
+        if any(k in q for k in ["영상", "영상 추천", "영상 추천해줘"]):
+            return "video_recommendation"
         # 4순위: 상호명 패턴만 단독으로 들어온 경우 (예: "{돔카*}")
         if store_name_pattern:
             return "profile_query"
