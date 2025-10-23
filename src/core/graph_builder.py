@@ -10,7 +10,6 @@ import streamlit as st
 import os
 from langgraph.checkpoint.memory import MemorySaver
 
-from src.core.common_tools.web_search_tool import web_search_tool
 from src.core.common_tools.marketing_idea_tool import marketing_idea_generator_tool
 from src.core.common_tools.rag_search_tool import rag_search_tool
 from src.features.profile_management.tool import get_profile, update_profile
@@ -34,7 +33,6 @@ llm = ChatGoogleGenerativeAI(model=PRIMARY_MODEL_NAME, google_api_key=google_api
 
 tools = {
     "data_analyzer": data_analysis_tool,
-    "web_searcher": web_search_tool,
     "action_card_generator": generate_action_card,
     "marketing_idea_generator": marketing_idea_generator_tool,
     "get_profile": get_profile,
@@ -43,6 +41,23 @@ tools = {
     "video_recommender": video_recommender_tool,
     "policy_recommender": policy_recommender_tool,
 }
+
+#  단순 응답을 위한 노드 
+def simple_responder_node(state: AgentState):
+    """
+    'greeting', 'unknown' 등 간단한 의도에 대해 LLM 호출 없이 즉시 답변하는 경량 노드.
+    """
+    print("--- 👋 Simple Responder 활동 시작 ---")
+    user_query = state['messages'][-1].content
+    intent = classify_intent(user_query) # 의도를 다시 한번 확인
+    
+    if intent == 'greeting':
+        response_content = "안녕하세요, 사장님! 무엇을 도와드릴까요?"
+    else: # 'unknown' 또는 기타 처리 불가능한 의도
+        response_content = "죄송합니다. 질문을 명확하게 이해하지 못했습니다. '우리 가게 재방문율 분석해줘'와 같이 구체적으로 질문해주시겠어요?"
+        
+    # 최종 상태에 메시지를 추가하여 반환
+    return {"messages": [AIMessage(content=response_content)]}
 
 # --- Router Node ---
 def router_node(state: AgentState) -> dict:
@@ -73,14 +88,19 @@ def router_node(state: AgentState) -> dict:
         return {"next_node": "executor", "plan": plan, "past_steps": []}
 
     # 복합적인 분석이 필요할 때만 Planner 호출
-    elif intent in ["data_analysis", "web_search", "marketing_idea", "rag_search"]:
+    elif intent in ["data_analysis", "marketing_idea", "rag_search"]:
         print("--- [Router] Planner 호출 결정 ---")
         return {"next_node": "planner"}
         
-    # 그 외 단순한 경우는 Synthesizer로 바로 연결
-    else: # profile_query, greeting, unknown 등
-        print("--- [Router] Synthesizer 직접 호출 결정 ---")
+    # 프로필 조회
+    elif intent == "profile_query":
+        print("--- [Router] Synthesizer 직접 호출 결정 (프로필 기반 답변) ---")
         return {"next_node": "synthesizer", "plan": []}
+        
+    # 인사나 알 수 없는 질문은 새로운 'simple_responder'가 처리하도록 합니다.
+    else: # greeting, unknown
+        print("--- [Router] 단순 응답 노드(Simple Responder) 직접 호출 결정 ---")
+        return {"next_node": "simple_responder"}
 
 # --- Planner Node ---
 def planner_node(state: AgentState):
@@ -171,26 +191,39 @@ def executor_node(state: AgentState):
 
 # --- Synthesizer Node (RAG-Aware) ---
 def synthesizer_node(state: AgentState):
-    print("--- ✍️ Synthesizer 최종 답변 작성 (RAG-Aware) ---")
+    print("--- ✍️ Synthesizer 최종 답변 작성 (논리 강화 버전) ---")
     
     user_query = state['messages'][-1].content
+    profile_json_str = json.dumps(state.get('current_profile'), ensure_ascii=False, indent=2)
     
-    # 일반 대화 시 RAG 검색을 먼저 수행
-    if not state.get("past_steps"):
-        print("--- [Synthesizer] 일반 대화로 판단, RAG 검색을 수행합니다. ---")
-        rag_context = data_service.search_for_context(query=user_query)
-        
-        # RAG 결과가 유의미할 때만 컨텍스트에 추가
-        if "찾지 못했습니다" not in rag_context:
-            base_context = f"**[참고 자료]**\n{rag_context}\n\n**[가맹점 프로필 정보]**\n{json.dumps(state.get('current_profile'), ensure_ascii=False, indent=2)}"
-        else:
-            base_context = f"**[가맹점 프로필 정보]**\n{json.dumps(state.get('current_profile'), ensure_ascii=False, indent=2)}"
-    else:
-        # Tool을 사용한 경우, 기존 로직대로 실행 결과를 근거로 사용
+    # Tool을 사용한 경우
+    if state.get("past_steps"):
         evidence = "\n\n".join(
             [f"**실행 내용:** {step}\n**결과:**\n{result}" for step, result in state.get("past_steps")]
         )
-        base_context = f"**[수집된 근거 자료]**\n{evidence}"
+        base_context = f"**[수집된 근거 자료]**\n{evidence}\n\n**[참고: 가맹점 프로필]**\n{profile_json_str}"
+    
+    # Tool을 사용하지 않은 경우 
+    else:
+        prompt_check = f"""사용자의 질문이 주어진 프로필 정보만으로 답변 가능한지 'yes' 또는 'no'로만 답해주세요.
+        
+        [프로필 정보]
+        {data_service.get_summary_for_planner(state['current_profile']['profile_id'])}
+        
+        [사용자 질문]
+        "{user_query}"
+        
+        답변 (yes/no):"""
+        
+        is_profile_sufficient = llm.invoke(prompt_check).content.strip().lower()
+
+        if 'yes' in is_profile_sufficient:
+            print("--- [Synthesizer] 프로필 정보만으로 답변 가능. RAG 검색 생략. ---")
+            base_context = f"**[가맹점 프로필 정보]**\n{profile_json_str}"
+        else:
+            print("--- [Synthesizer] 외부 정보 필요. RAG 검색 수행. ---")
+            rag_context = data_service.search_for_context(query=user_query)
+            base_context = f"**[참고 자료]**\n{rag_context}\n\n**[가맹점 프로필 정보]**\n{profile_json_str}"
 
     prompt = f"""당신은 전문 컨설턴트입니다. 아래 [사용자 질문]에 대해, 주어진 [핵심 근거]만을 바탕으로 친절하고 명확하게 최종 답변을 작성해주세요.
 만약 [참고 자료]가 있다면, 해당 내용을 인용하여 답변의 신뢰도를 높여주세요.
@@ -217,6 +250,7 @@ workflow.add_node("router", router_node)
 workflow.add_node("planner", planner_node)
 workflow.add_node("executor", executor_node)
 workflow.add_node("synthesizer", synthesizer_node)
+workflow.add_node("simple_responder", simple_responder_node)
 
 # 2. 그래프의 시작점을 'router'로 설정합니다.
 workflow.set_entry_point("router")
@@ -230,7 +264,8 @@ workflow.add_conditional_edges(
     {
         "planner": "planner",
         "executor": "executor", 
-        "synthesizer": "synthesizer"
+        "synthesizer": "synthesizer",
+        "simple_responder": "simple_responder"
     }
 )
 
