@@ -142,7 +142,7 @@ def synthesizer_node(state: AgentState):
     # 일반 대화 시 RAG 검색을 먼저 수행
     if not state.get("past_steps"):
         print("--- [Synthesizer] 일반 대화로 판단, RAG 검색을 수행합니다. ---")
-        rag_context = data_service.search_knowledge_base(query=user_query)
+        rag_context = data_service.search_for_context(query=user_query)
         
         # RAG 결과가 유의미할 때만 컨텍스트에 추가
         if "찾지 못했습니다" not in rag_context:

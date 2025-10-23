@@ -61,7 +61,7 @@ def generate_action_card(user_query: str, profile: dict) -> str:
 
     # 초기 RAG 검색을 수행
     rag_query = f"{profile.get('core_data', {}).get('basic_info', {}).get('industry_main', '')} 업종의 {user_query}"
-    initial_rag_context = data_service.search_knowledge_base(query=rag_query)
+    initial_rag_context = data_service.search_for_context(query=rag_query)
 
     for i in range(max_turns):
         print(f"--- [Agent2 Loop] Turn {i+1}/{max_turns} ---")
@@ -87,7 +87,7 @@ def generate_action_card(user_query: str, profile: dict) -> str:
                     result = data_analysis_tool.invoke({"query": query, "store_id": store_id})
                 elif tool_name == "rag_searcher":
                     print(f"--- 🤵 비서: Agent2의 요청으로 RAG 검색 수행 -> '{query}' ---")
-                    result = data_service.search_knowledge_base(query=query)
+                    result = data_service.search_for_context(query=query)
                 else:
                     result = f"알 수 없는 도구 요청: {tool_name}"
             except Exception as e:

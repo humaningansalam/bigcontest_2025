@@ -65,33 +65,16 @@ def get_chroma_client():
     
     return _client
 
-def search_unified_rag(query: str, collection_types: list[str] = None, n_results: int = 3) -> tuple[str, list[dict]]:
-    """
-    지정된 유형의 여러 지식 베이스 컬렉션에서 정보를 검색하고 통합합니다.
-    """
-    client = get_chroma_client()
-    if not client:
-        return "RAG 시스템에 연결할 수 없습니다.", []
-
-    if collection_types is None:
-        collection_types = ["strategy", "guide", "trend"]
-
+def _perform_search(client, query: str, collection_types: list[str], n_results: int) -> list[dict]:
+    """ 실제 ChromaDB 검색을 수행하고 원본 결과 리스트를 반환합니다."""
     all_results = []
     seen_docs = set()
-
     for ctype in collection_types:
         collection_name = COLLECTIONS.get(ctype)
-        if not collection_name:
-            continue
-            
+        if not collection_name: continue
         try:
             collection = client.get_collection(name=collection_name)
-            results = collection.query(
-                query_texts=[query],
-                n_results=n_results,
-                include=["documents", "metadatas"]
-            )
-            
+            results = collection.query(query_texts=[query], n_results=n_results, include=["documents", "metadatas"])
             if results and results['documents']:
                 for doc, meta in zip(results['documents'][0], results['metadatas'][0]):
                     if doc not in seen_docs:
@@ -99,18 +82,41 @@ def search_unified_rag(query: str, collection_types: list[str] = None, n_results
                         seen_docs.add(doc)
         except Exception as e:
             print(f"⚠️ RAG 검색 중 '{collection_name}' 컬렉션에서 오류: {e}")
+    return all_results
 
-    if not all_results:
-        return "관련 정보를 찾을 수 없습니다.", []
+def search_unified_rag_for_context(query: str, collection_types: list[str] = None, n_results: int = 3) -> str:
+    """
+    LLM 프롬프트에 넣기 좋은 '문자열 컨텍스트'만 생성하여 반환합니다.
+    """
+    client = get_chroma_client()
+    if not client: return "RAG 시스템에 연결할 수 없습니다."
+    
+    all_results = _perform_search(client, query, collection_types, n_results)
+    if not all_results: return "관련 정보를 찾을 수 없습니다."
 
     context_str = ""
-    sources_list = []
     for i, res in enumerate(all_results[:5]):
-        meta = res['meta']
-        ctype = res['collection']
-        
-        source_info = f"[출처:{i+1}|{ctype.upper()}] 제목: {meta.get('document_title', 'N/A')}, 출처: {meta.get('source_name', 'N/A')}"
-        context_str += f"{source_info}\n내용: {res['doc']}\n\n"
-        sources_list.append(meta)
+        meta = res.get('meta', {})
+        doc = res.get('doc', '')
+        ctype = res.get('collection', 'unknown')
+        title = meta.get('title', meta.get('document_title', 'N/A'))
+        source_info = f"[출처:{i+1}|{ctype.upper()}] 제목: {title}"
+        context_str += f"{source_info}\n내용 요약: {doc[:200]}...\n\n"
+    return context_str
 
-    return context_str, sources_list
+def search_unified_rag_for_sources(query: str, collection_types: list[str] = None, n_results: int = 3) -> List[Dict[str, Any]]:
+    """
+    메타데이터와 본문(content)을 모두 포함한 '구조화된 소스 리스트'를 반환합니다.
+    """
+    client = get_chroma_client()
+    if not client: return []
+    
+    all_results = _perform_search(client, query, collection_types, n_results)
+    if not all_results: return []
+
+    sources_list = []
+    for res in all_results[:5]:
+        source_item = res.get('meta', {}).copy()
+        source_item['content'] = res.get('doc', '')
+        sources_list.append(source_item)
+    return sources_list

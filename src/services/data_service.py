@@ -7,7 +7,7 @@ import os
 
 # 서비스는 다른 서비스나 도구, 유틸리티를 '사용'하는 역할을 합니다.
 from .profile_service import profile_manager
-from src.services.rag_service import search_unified_rag
+from src.services.rag_service import search_unified_rag_for_context, search_unified_rag_for_sources
 
 class DataService:
     """
@@ -81,13 +81,20 @@ class DataService:
         return {k: v for k, v in summary.items() if v is not None and v != []}
 
     @lru_cache(maxsize=256)
-    def search_knowledge_base(self, query: str) -> str:
+    def search_for_context(self, query: str, collection_types: List[str] = None) -> str:
         """
-        RAG 지식 베이스를 검색합니다.
+        Synthesizer와 같이 단순 문자열 컨텍스트가 필요한 경우 사용합니다.
         """
-        print(f"--- [DataService] RAG 검색 실행 : {query} ---")
-        context_str, _ = search_unified_rag(query)
-        return context_str
+        print(f"--- [DataService] RAG 컨텍스트 검색 실행: {query} ---")
+        return search_unified_rag_for_context(query, collection_types)
+
+    @lru_cache(maxsize=128)
+    def search_for_sources(self, query: str, collection_types: List[str] = None) -> List[Dict[str, Any]]:
+        """
+        video_recommender와 같이 구조화된 전체 정보가 필요한 경우 사용합니다.
+        """
+        print(f"--- [DataService] RAG 소스 검색 실행: {query} ---")
+        return search_unified_rag_for_sources(query, collection_types)
 
 # 프로젝트 전역에서 사용할 싱글톤(Singleton) 인스턴스 생성
 data_service = DataService()
