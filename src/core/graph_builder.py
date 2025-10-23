@@ -133,6 +133,8 @@ def executor_node(state: AgentState):
     print(f"--- [실행] 도구: {tool_name} // 지시사항: {query} ---")
 
     past_step_result = ""
+    sources_from_tool = []  
+
     if tool_name in tools:
         tool = tools[tool_name]
         try:
@@ -161,14 +163,21 @@ def executor_node(state: AgentState):
             else: # web_searcher, rag_search_tool 등 'query' 인자만 받는 기본 도구들
                 invoke_args = {"query": query}
             
+            # Tool 호출
             result = tool.invoke(invoke_args)
-            past_step_result = str(result)
 
-            # Pandas Agent 또는 Action Card Generator가 최종 답변을 생성하면 바로 종료
+            # Tool 결과가 출처 리스트인지 확인하고 처리
+            if tool_name == "rag_searcher" and isinstance(result, list):
+                sources_from_tool = result
+                # LLM과 로그가 읽을 수 있도록 요약된 문자열로도 변환
+                past_step_result = f"총 {len(result)}개의 관련 자료를 찾았습니다: " + ", ".join([item.get('title', '제목 없음') for item in result])
+            else:
+                # 다른 Tool들은 결과를 문자열로 변환
+                past_step_result = str(result)
+
+            # 특정 전문가 Tool이 최종 답변을 생성하면 즉시 종료
             if (tool_name == "data_analyzer" and "Final Answer:" in past_step_result) or \
-               (tool_name == "action_card_generator") or \
-               (tool_name == "video_recommender") or \
-               (tool_name == "policy_recommender"):
+               (tool_name in ["action_card_generator", "video_recommender", "policy_recommender"]):
                 
                 final_content = past_step_result
                 if "Final Answer:" in past_step_result:
@@ -187,46 +196,40 @@ def executor_node(state: AgentState):
     else:
         past_step_result = f"오류: '{tool_name}'은(는) 알 수 없는 도구입니다."
 
-    return {"plan": state["plan"][1:], "past_steps": state.get("past_steps", []) + [(step, past_step_result)]}
+    # 다음 상태로 전달할 최종 상태 객체 구성
+    return {
+        "plan": state["plan"][1:], 
+        "past_steps": state.get("past_steps", []) + [(step, past_step_result)],
+        "sources": (state.get("sources") or []) + sources_from_tool
+    }
 
 # --- Synthesizer Node (RAG-Aware) ---
 def synthesizer_node(state: AgentState):
-    print("--- ✍️ Synthesizer 최종 답변 작성 (논리 강화 버전) ---")
+    print("--- ✍️ Synthesizer 최종 답변 작성  ---")
     
     user_query = state['messages'][-1].content
-    profile_json_str = json.dumps(state.get('current_profile'), ensure_ascii=False, indent=2)
+    profile = state.get('current_profile')
+    profile_json_str = json.dumps(profile, ensure_ascii=False, indent=2)
     
-    # Tool을 사용한 경우
+    base_context = ""
+    
+    # Case 1: Executor가 Tool을 사용한 경우
     if state.get("past_steps"):
+        print("--- [Synthesizer] Tool 실행 결과를 바탕으로 답변을 구성합니다. ---")
         evidence = "\n\n".join(
-            [f"**실행 내용:** {step}\n**결과:**\n{result}" for step, result in state.get("past_steps")]
+            # 결과가 너무 길 경우를 대비해 일부만 표시할 수도 있습니다.
+            [f"**실행 내용:** {step}\n**결과:**\n{str(result)[:1000]}..." for step, result in state.get("past_steps")]
         )
         base_context = f"**[수집된 근거 자료]**\n{evidence}\n\n**[참고: 가맹점 프로필]**\n{profile_json_str}"
-    
-    # Tool을 사용하지 않은 경우 
+
+    # Case 2: Tool을 사용하지 않은 경우 (Router가 바로 호출)
     else:
-        prompt_check = f"""사용자의 질문이 주어진 프로필 정보만으로 답변 가능한지 'yes' 또는 'no'로만 답해주세요.
-        
-        [프로필 정보]
-        {data_service.get_summary_for_planner(state['current_profile']['profile_id'])}
-        
-        [사용자 질문]
-        "{user_query}"
-        
-        답변 (yes/no):"""
-        
-        is_profile_sufficient = llm.invoke(prompt_check).content.strip().lower()
+        print("--- [Synthesizer] 프로필 정보만을 바탕으로 답변을 구성합니다. ---")
+        base_context = f"**[가맹점 프로필 정보]**\n{profile_json_str}"
 
-        if 'yes' in is_profile_sufficient:
-            print("--- [Synthesizer] 프로필 정보만으로 답변 가능. RAG 검색 생략. ---")
-            base_context = f"**[가맹점 프로필 정보]**\n{profile_json_str}"
-        else:
-            print("--- [Synthesizer] 외부 정보 필요. RAG 검색 수행. ---")
-            rag_context = data_service.search_for_context(query=user_query)
-            base_context = f"**[참고 자료]**\n{rag_context}\n\n**[가맹점 프로필 정보]**\n{profile_json_str}"
-
+    # 최종 답변 생성용 프롬프트는 동일
     prompt = f"""당신은 전문 컨설턴트입니다. 아래 [사용자 질문]에 대해, 주어진 [핵심 근거]만을 바탕으로 친절하고 명확하게 최종 답변을 작성해주세요.
-만약 [참고 자료]가 있다면, 해당 내용을 인용하여 답변의 신뢰도를 높여주세요.
+만약 [핵심 근거]에 [출처]나 [참고 자료]가 포함되어 있다면, 해당 내용을 인용하여 답변의 신뢰도를 높여주세요.
 
 **[사용자 질문]**
 {user_query}
@@ -236,10 +239,12 @@ def synthesizer_node(state: AgentState):
 
 **[최종 답변]**
 """
+    
     response = llm.invoke(prompt)
-    return {"messages": [AIMessage(content=response.content)]}
 
-
+    return {
+        "messages": [AIMessage(content=response.content)]
+    }
 
 
 # --- 최종 그래프 구성 ---
