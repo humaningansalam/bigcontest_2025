@@ -8,6 +8,7 @@ from langgraph.graph import StateGraph, END
 from src.core.state import AgentState
 import streamlit as st
 import os
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.core.common_tools.web_search_tool import web_search_tool
 from src.core.common_tools.marketing_idea_tool import marketing_idea_generator_tool
@@ -269,5 +270,6 @@ workflow.add_conditional_edges(
 workflow.add_edge("synthesizer", END)
 
 # 4. 그래프를 컴파일합니다.
-graph = workflow.compile()
+memory = MemorySaver()
+graph = workflow.compile(checkpointer=memory)
 
