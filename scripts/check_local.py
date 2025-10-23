@@ -14,7 +14,9 @@ COLLECTIONS_TO_CHECK = [
     "store_profiles",
     "strategies_and_theories",
     "practical_guides",
-    "market_trends_and_data"
+    "market_trends_and_data",
+    "learning_videos",
+    "case_studies_and_policies"
 ]
 
 def main():
