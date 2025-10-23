@@ -31,15 +31,24 @@ except Exception as e:
 examples = [
     {"input": "우리 가게 정보 알려줘", "output": "profile_query"},
     {"input": "{고향***} 프로필 보여줘", "output": "profile_query"},
+    
     {"input": "재방문율 4주 플랜 작성해줘", "output": "bigcon_request"},
     {"input": "{돔카*} 매출 증대 방안 제시", "output": "bigcon_request"},
     {"input": "마케팅 채널 추천 및 홍보안 작성해줘", "output": "bigcon_request"},
+    
     {"input": "재방문율 30% 이하 매장 특성 분석", "output": "data_analysis"},
+    
     {"input": "2025년 카페 트렌드", "output": "web_search"},
+    
     {"input": "신규 고객 유치 아이디어", "output": "marketing_idea"},
+    
     {"input": "도움될만한 영상 추천해줘", "output": "video_recommendation"},
     {"input": "마케팅 관련 유튜브 영상 찾아줘", "output": "video_recommendation"},
     {"input": "신규 고객 유치 전략에 대한 동영상 없어?", "output": "video_recommendation"},
+
+    {"input": "지원사업 추천해줘", "output": "policy_recommendation"},
+    {"input": "정부 지원 받을 거 없어?", "output": "policy_recommendation"},
+    {"input": "서울시에서 하는 소상공인 정책 알려줘", "output": "policy_recommendation"},
     {"input": "안녕", "output": "greeting"},
 
 ]
@@ -72,6 +81,7 @@ final_prompt = ChatPromptTemplate.from_messages(
 - `web_search`: 외부 정보, 최신 트렌드, 경쟁사 등을 검색 요청.
 - `marketing_idea`: 창의적인 마케팅 아이디어를 생성 요청.
 - `video_recommendation`: 주제와 관련된 학습용 동영상 추천을 요청.
+- `policy_recommendation`: 정부 지원사업, 보조금, 혜택 추천을 요청.
 - `greeting`: 간단한 인사나 대화 시작.
 - `unknown`: 위 카테고리에 해당하지 않는 질문.
 """
@@ -113,6 +123,8 @@ def classify_intent(user_query: str) -> str:
             return "greeting"
         if any(k in q for k in ["영상", "영상 추천", "영상 추천해줘"]):
             return "video_recommendation"
+        if any(k in q for k in ["지원사업", "정부 지원", "보조금", "혜택"]):
+            return "policy_recommendation"
         # 4순위: 상호명 패턴만 단독으로 들어온 경우 (예: "{돔카*}")
         if store_name_pattern:
             return "profile_query"
