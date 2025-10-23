@@ -28,8 +28,8 @@ COLLECTIONS = {
     "strategy": "strategies_and_theories",
     "guide": "practical_guides",
     "trend": "market_trends_and_data",
-    "video": "learn_videos",
-    "policy": "case_studies_and_policies"
+    "video": "learning_videos",
+    "case": "case_studies_and_policies"
 }
 
 # 클라이언트 객체를 캐싱하기 위한 전역 변수

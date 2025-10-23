@@ -22,7 +22,7 @@ def rag_search_tool(query: str, collection_types: List[str] | None = None) -> st
     print(f"--- 🛠️ Tool: rag_search_tool 호출됨 -> DataService에 위임 ---")
     try:
         if collection_types is None:
-            collection_types = ["strategy", "guide", "trend", "case", "local"]
+            collection_types = ("strategy", "guide", "trend", "case", "local") 
             
         context_str = data_service.search_for_context(query, collection_types=collection_types)
         

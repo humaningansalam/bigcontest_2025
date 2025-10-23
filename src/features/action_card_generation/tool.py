@@ -6,7 +6,6 @@ import json
 
 from .adapter import profile_to_agent1_like_json
 from src.utils.errors import create_tool_error
-from src.services.rag_service import search_unified_rag
 
 from .agent import build_agent2_prompt, call_gemini_for_action_card
 from src.features.data_analysis.tool import data_analysis_tool
