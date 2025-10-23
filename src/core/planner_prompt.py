@@ -2,7 +2,7 @@
 
 import json
 from typing import Dict, Any
-
+from src.services.data_service import data_service
 
 SYSTEM_MESSAGE = """
 당신은 소상공인 전문 AI 컨설턴트의 '최고 전략 책임자(Planner)'입니다.
@@ -46,23 +46,29 @@ def build_planner_prompt(state: Dict[str, Any]) -> str:
     try:
         profile = state.get("current_profile", {})
         # messages 리스트의 마지막 메시지가 사용자 질문이라고 가정
+        store_id = profile.get("profile_id")
         user_query = state['messages'][-1].content
     except (IndexError, KeyError) as e:
         # 상태 구조가 예상과 다를 경우를 대비한 방어 코드
         print(f"경고: State에서 정보를 추출하는 중 오류 발생 - {e}")
         profile = {}
+        store_id = None
         user_query = "정보를 찾을 수 없음"
 
     # 2. 컨텍스트 정보 구성
-    profile_summary = json.dumps(profile, ensure_ascii=False, indent=2)
+    if store_id:
+        available_info = data_service.get_summary_for_planner(store_id)
+        available_info_str = "\n".join([f"- {k}: {v}" for k, v in available_info.items()])
+    else:
+        available_info_str = "현재 조회된 가맹점 프로필 정보가 없습니다."
+
     context_section = f"""
 **[상황 정보]**
-1.  **현재 상담 중인 가맹점 프로필:**
-    ```json
-    {profile_summary}
-    ```
-2.  **사용자의 최근 요청:**
+1.  **사용자의 최근 요청:**
     "{user_query}"
+2.  **현재 프로필에 이미 확보된 주요 정보:**
+    (아래 정보로 답변이 충분하다면, `data_analyzer`를 호출하지 마세요.)
+{available_info_str}
 """
 
     # 3. 사용 가능한 도구 설명 구성

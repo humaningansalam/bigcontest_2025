@@ -15,6 +15,7 @@ from src.core.common_tools.rag_search_tool import rag_search_tool
 from src.features.profile_management.tool import get_profile, update_profile
 from src.features.data_analysis.tool import data_analysis_tool
 from src.features.action_card_generation.tool import generate_action_card
+from src.services.data_service import data_service
 from src.core.intent_classifier import classify_intent
 from .planner_prompt import build_planner_prompt
 from src.utils.errors import create_tool_error
@@ -141,7 +142,7 @@ def synthesizer_node(state: AgentState):
     # 일반 대화 시 RAG 검색을 먼저 수행
     if not state.get("past_steps"):
         print("--- [Synthesizer] 일반 대화로 판단, RAG 검색을 수행합니다. ---")
-        rag_context = rag_search_tool.invoke({"query": user_query})
+        rag_context = data_service.search_knowledge_base(query=user_query)
         
         # RAG 결과가 유의미할 때만 컨텍스트에 추가
         if "찾지 못했습니다" not in rag_context:

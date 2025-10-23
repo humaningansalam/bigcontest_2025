@@ -12,6 +12,7 @@ from .agent import build_agent2_prompt, call_gemini_for_action_card
 from src.features.data_analysis.tool import data_analysis_tool
 from src.core.common_tools.rag_search_tool import rag_search_tool
 from src.features.profile_management.tool import get_profile
+from src.services.data_service import data_service 
 
 class ActionCardGeneratorInput(BaseModel):
     user_query: str = Field(..., description="사용자의 원본 질문")
@@ -60,12 +61,7 @@ def generate_action_card(user_query: str, profile: dict) -> str:
 
     # 초기 RAG 검색을 수행
     rag_query = f"{profile.get('core_data', {}).get('basic_info', {}).get('industry_main', '')} 업종의 {user_query}"
-    print(f"--- [Agent2 비서] 초기 RAG 검색 수행: '{rag_query}' ---")
-    
-    initial_rag_context, _ = search_unified_rag(
-        query=rag_query,
-        collection_types=["strategy", "guide", "trend"] 
-    )
+    initial_rag_context = data_service.search_knowledge_base(query=rag_query)
 
     for i in range(max_turns):
         print(f"--- [Agent2 Loop] Turn {i+1}/{max_turns} ---")
@@ -91,8 +87,7 @@ def generate_action_card(user_query: str, profile: dict) -> str:
                     result = data_analysis_tool.invoke({"query": query, "store_id": store_id})
                 elif tool_name == "rag_searcher":
                     print(f"--- 🤵 비서: Agent2의 요청으로 RAG 검색 수행 -> '{query}' ---")
-                    rag_context_str, _ = search_unified_rag(query=query)
-                    result = rag_context_str
+                    result = data_service.search_knowledge_base(query=query)
                 else:
                     result = f"알 수 없는 도구 요청: {tool_name}"
             except Exception as e:
