@@ -4,6 +4,7 @@ import chromadb
 import os
 import json
 from pathlib import Path
+from typing import Dict, Any, List
 
 # 1. 설정 변수
 
@@ -27,6 +28,8 @@ COLLECTIONS = {
     "strategy": "strategies_and_theories",
     "guide": "practical_guides",
     "trend": "market_trends_and_data",
+    "video": "learn_videos",
+    "policy": "case_studies_and_policies"
 }
 
 # 클라이언트 객체를 캐싱하기 위한 전역 변수
