@@ -4,7 +4,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 import uuid
 from src.core.graph_builder import graph
 from src.features.profile_management.resolver import resolve_store_id_from_name
-from src.services.profile_service import profile_manager
+from src.services import profile_manager
 
 st.set_page_config(page_title="소상공인 AI 비밀상담사 🤖", layout="wide")
 st.title("🏪 소상공인 AI 비밀상담사")
@@ -91,13 +91,38 @@ else:
             
             # --- 최종 답변 추출 로직 ---
             final_response = ""
+            final_sources = []
+
             if final_state:
                 last_node_key = list(final_state.keys())[0]
-                messages = final_state[last_node_key].get("messages")
-                if messages:
-                    final_response = messages[-1].content
+                final_graph_state = final_state[last_node_key]
+                final_response = final_graph_state.get("final_output")
 
-            st.markdown(final_response)
+                if not final_response:
+                    messages = final_graph_state.get("messages", [])
+                    if messages and isinstance(messages[-1], AIMessage):
+                        final_response = messages[-1].content
+
+                final_sources = final_graph_state.get("sources", [])
+
+            # --- 최종 답변 및 출처 UI 렌더링 ---
+            st.markdown(final_response or "죄송합니다, 답변을 생성하는 데 문제가 발생했습니다.")
+
+            if final_sources:
+                st.session_state["last_sources"] = final_sources 
+                with st.expander("📚 답변에 사용된 근거 자료 보기"):
+                    for i, src in enumerate(final_sources):
+                        title = src.get('title', src.get('document_title', '제목 없음'))
+                        source_name = src.get('source_name', '출처 불명')
+                        url = src.get('url', src.get('접수처_url', '#'))
+                        collection_type = src.get('collection', '정보').upper()
+
+                        st.markdown(f"##### **[{i+1}] {title}**")
+                        st.caption(f"자료 유형: `{collection_type}` | 출처: `{source_name}`")
+                        
+                        if url and url != '#':
+                            st.markdown(f"➡️ [자세히 보기]({url})")
+                        st.divider()
 
         if final_response:
             st.session_state.messages.append(AIMessage(content=final_response))

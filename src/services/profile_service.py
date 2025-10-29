@@ -5,7 +5,6 @@ import json
 from .rag_service import get_chroma_client 
 from src.utils.errors import create_tool_error
 
-# 이 클래스의 인스턴스가 프로필 DB에 대한 유일한 접근 지점이 됩니다.
 class ProfileManager:
     """
     프로필 데이터에 대한 모든 CRUD(Create, Read, Update, Delete) 작업을 중앙에서 관리하고,
@@ -20,7 +19,6 @@ class ProfileManager:
         
         if self.client:
             try:
-                # store_profiles 컬렉션이 존재한다고 가정합니다.
                 self.collection = self.client.get_collection(name="store_profiles")
                 print("✅ ProfileManager: 'store_profiles' 컬렉션에 성공적으로 연결되었습니다.")
             except Exception as e:
@@ -61,7 +59,6 @@ class ProfileManager:
         with self._lock: 
             print(f"--- 락(Lock) 획득 성공. 프로필 업데이트 시작 ---")
             try:
-                # 1. 먼저 현재 데이터를 읽어옵니다.
                 original_data = self.collection.get(ids=[str(store_id)], include=["metadatas", "documents"])
                 if not original_data['ids']:
                     print(f"⚠️ 업데이트할 프로필을 찾을 수 없음 (ID: {store_id})")
@@ -70,13 +67,11 @@ class ProfileManager:
                 profile = json.loads(original_data['metadatas'][0]['profile_json'])
                 existing_doc = original_data['documents'][0]
                 
-                # 2. 메모리에서 데이터를 수정한 뒤
                 profile.setdefault(section, {}).setdefault(key, {}).update(data_to_update)
                 
-                # 3. DB에 다시 씁니다 (upsert).
                 self.collection.upsert(
                     ids=[str(store_id)],
-                    documents=[existing_doc], # document는 변경하지 않음
+                    documents=[existing_doc],
                     metadatas=[{"profile_json": json.dumps(profile, ensure_ascii=False)}]
                 )
                 return True

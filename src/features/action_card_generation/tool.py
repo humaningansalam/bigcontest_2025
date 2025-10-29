@@ -12,6 +12,10 @@ from src.features.data_analysis.tool import data_analysis_tool
 from src.core.common_tools.rag_search_tool import rag_search_tool
 from src.features.profile_management.tool import get_profile
 from src.services.data_service import data_service 
+from src.core.common_models import ToolOutput
+
+
+TOOL_DESCRIPTION = "수집된 모든 정보를 종합하여 구체적인 실행 방안이 담긴 '실행 카드'나 'n주 플랜'을 생성하는 '수석 컨설턴트'입니다. 가장 마지막에 호출되는 경우가 많습니다."
 
 class ActionCardGeneratorInput(BaseModel):
     user_query: str = Field(..., description="사용자의 원본 질문")
@@ -41,60 +45,64 @@ def _format_action_card_result(agent2_json: dict) -> str:
     return output
 
 @tool(args_schema=ActionCardGeneratorInput)
-def generate_action_card(user_query: str, profile: dict) -> str:
+def generate_action_card(user_query: str, profile: dict) -> ToolOutput:
     """
     실행 카드 생성을 위한 전문가 에이전트(Agent2)를 루프(Loop) 방식으로 호출합니다.
     Agent2가 만족스러운 결과를 낼 때까지 필요한 정보를 대신 수집하여 제공합니다.
     """
     print("--- 🛠️ Tool: generate_action_card (Phase 2 수정 버전) 호출됨 ---")
     
-    if not profile:
-        return "오류: 프로필 정보가 없어 실행 카드를 생성할 수 없습니다."
+    try:
+        if not profile:
+            return ToolOutput(content="오류: 프로필 정보가 없어 실행 카드를 생성할 수 없습니다.").model_dump()
 
-    max_turns = 3  # 루프 최대 횟수를 3회로 조정하여 비용 및 시간 관리
-    collected_data = []
-    
-    # Adapter: 프로필을 Agent2가 이해하는 형식으로 변환
-    agent1_like_json = profile_to_agent1_like_json(profile, user_query)
-    store_id = profile.get("profile_id")
-
-    # 초기 RAG 검색을 수행
-    rag_query = f"{profile.get('core_data', {}).get('basic_info', {}).get('industry_main', '')} 업종의 {user_query}"
-    initial_rag_context = data_service.search_for_context(query=rag_query)
-
-    for i in range(max_turns):
-        print(f"--- [Agent2 Loop] Turn {i+1}/{max_turns} ---")
-
-        prompt = build_agent2_prompt(agent1_like_json, initial_rag_context, collected_data)
-        agent2_result = call_gemini_for_action_card(prompt)
+        max_turns = 3  # 루프 최대 횟수를 3회
+        collected_data = []
         
-        tool_calls = agent2_result.get("tool_calls")
-        if not tool_calls:
-            print("--- [Agent2 Loop] 완료. 최종 카드 생성. ---")
-            return _format_action_card_result(agent2_result)
-            
-        print(f"--- [Agent2 Loop] Tool 호출 요청 감지: {tool_calls} ---")
-        for call in tool_calls:
-            tool_name = call.get("tool_name")
-            query = call.get("query")
-            result = ""
-            
-            try:
-                # Phase 1에서 수정한 Tool들을 직접 호출
-                if tool_name == "data_analyzer":
-                    print(f"--- 🤵 비서: Agent2의 요청으로 데이터 분석 수행 -> '{query}' ---")
-                    result = data_analysis_tool.invoke({"query": query, "store_id": store_id})
-                elif tool_name == "rag_searcher":
-                    print(f"--- 🤵 비서: Agent2의 요청으로 RAG 검색 수행 -> '{query}' ---")
-                    result = data_service.search_for_context(query=query)
-                else:
-                    result = f"알 수 없는 도구 요청: {tool_name}"
-            except Exception as e:
-                result = create_tool_error(tool_name, e)
-            
-            collected_data.append((f"[Tool: {tool_name}] {query}", result))
+        agent1_like_json = profile_to_agent1_like_json(profile, user_query)
+        store_id = profile.get("profile_id")
 
-    print("--- [Agent2 Loop] 최대 턴 도달. 마지막 생성 시도. ---")
-    final_prompt = build_agent2_prompt(agent1_like_json, initial_rag_context, collected_data)
-    final_result = call_gemini_for_action_card(final_prompt)
-    return _format_action_card_result(final_result)
+        # 초기 RAG 검색을 수행
+        rag_query = f"{profile.get('core_data', {}).get('basic_info', {}).get('industry_main', '')} 업종의 {user_query}"
+        initial_rag_context = data_service.search_for_context(query=rag_query)
+
+        for i in range(max_turns):
+            print(f"--- [Agent2 Loop] Turn {i+1}/{max_turns} ---")
+
+            prompt = build_agent2_prompt(agent1_like_json, initial_rag_context, collected_data)
+            agent2_result = call_gemini_for_action_card(prompt)
+            
+            tool_calls = agent2_result.get("tool_calls")
+            if not tool_calls:
+                print("--- [Agent2 Loop] 완료. 최종 카드 생성. ---")
+                formatted_content = _format_action_card_result(agent2_result)
+                return ToolOutput(content=formatted_content, is_final_answer=True, sources=None).model_dump()
+                
+            print(f"--- [Agent2 Loop] Tool 호출 요청 감지: {tool_calls} ---")
+            for call in tool_calls:
+                tool_name = call.get("tool_name")
+                query = call.get("query")
+                result = ""
+                
+                try:
+                    if tool_name == "data_analyzer":
+                        print(f"--- 🤵 비서: Agent2의 요청으로 데이터 분석 수행 -> '{query}' ---")
+                        result = data_analysis_tool.invoke({"query": query, "store_id": store_id})
+                    elif tool_name == "rag_searcher":
+                        print(f"--- 🤵 비서: Agent2의 요청으로 RAG 검색 수행 -> '{query}' ---")
+                        result = data_service.search_for_context(query=query)
+                    else:
+                        result = f"알 수 없는 도구 요청: {tool_name}"
+                except Exception as e:
+                    result = create_tool_error(tool_name, e)
+                
+                collected_data.append((f"[Tool: {tool_name}] {query}", result))
+
+        print("--- [Agent2 Loop] 최대 턴 도달. 마지막 생성 시도. ---")
+        final_prompt = build_agent2_prompt(agent1_like_json, initial_rag_context, collected_data)
+        final_result = call_gemini_for_action_card(final_prompt)
+        formatted_content = _format_action_card_result(final_result)
+        return ToolOutput(content=formatted_content, is_final_answer=True, sources=None).model_dump()
+    except Exception as e:
+        error_content = create_tool_error("generate_action_card", e, query=user_query)
+        return ToolOutput(content=error_content).model_dump()

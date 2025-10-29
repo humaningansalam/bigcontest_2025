@@ -7,19 +7,28 @@ import streamlit as st
 import os
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
+from src.core.tool_registry import tool_registry
 
 from src.utils.errors import create_tool_error
+from src.core.common_models import ToolOutput
 
 load_dotenv()
 google_api_key = st.secrets.get("GOOGLE_API_KEY", os.getenv("GOOGLE_API_KEY"))
 
 llm = ChatGoogleGenerativeAI(model=PRIMARY_MODEL_NAME, google_api_key=google_api_key, temperature=0.7) # 창의성을 위해 온도를 약간 높임
 
+
+TOOL_DESCRIPTION = "분석된 데이터나 트렌드를 바탕으로 창의적인 마케팅 아이디어를 브레인스토밍하는 '마케팅 전문가'입니다."
+
 class MarketingIdeaInput(BaseModel):
     topic: str = Field(..., description="마케팅 아이디어 생성을 위한 기반이 될 주제나 데이터 분석 결과")
 
+@tool_registry.register(
+    name="marketing_idea_generator",
+    description=TOOL_DESCRIPTION
+)
 @tool(args_schema=MarketingIdeaInput)
-def marketing_idea_generator_tool(topic: str) -> str:
+def marketing_idea_generator_tool(topic: str) -> dict:
     """
     주어진 주제(데이터 분석 결과, 트렌드)를 바탕으로 마케팅 아이디어를 생성합니다.
     """
@@ -38,6 +47,7 @@ def marketing_idea_generator_tool(topic: str) -> str:
     2. ...
     """
         response = llm.invoke(prompt)
-        return response.content
+        return ToolOutput(content=response.content).model_dump()
     except Exception as e:
-        return create_tool_error("marketing_idea_generator", e)
+        error_content = create_tool_error("marketing_idea_generator", e, query=topic)
+        return ToolOutput(content=error_content).model_dump()

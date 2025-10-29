@@ -12,7 +12,7 @@ import os
 load_dotenv()
 
 # --- 경로 설정 ---
-# 이 파일의 위치를 기준으로 상위 폴더(src)를 참조하여 경로를 설정합니다.
+# 이 파일의 위치를 기준으로 상위 폴더(src)를 참조하여 경로를 설정
 APP_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = APP_ROOT / 'action_card_generation' / 'actioncard.schema.json'
 OUTPUT_DIR = APP_ROOT / 'outputs'
@@ -46,7 +46,6 @@ def build_agent2_prompt(agent1_like_json: dict, rag_context: str, collected_data
     """
     try:
         schema, _ = load_actioncard_schema()
-        # tool_schema_desc는 예시를 보여주기 위한 것이므로, 중괄호를 이스케이프 처리합니다.
         tool_schema_desc_example = """
 [
   {
@@ -71,9 +70,6 @@ def build_agent2_prompt(agent1_like_json: dict, rag_context: str, collected_data
         for i, (step, result) in enumerate(collected_data):
             additional_info += f"--- 정보 {i+1} ---\n요청 내용: {step}\n수집 결과: {result}\n"
 
-    # f-string 내부의 예시 JSON에서 중괄호를 {{ 와 }} 로 이스케이프 처리합니다.
-    # 또는, f-string을 사용하지 않고 일반 문자열로 만들어 혼란을 방지합니다.
-    # 여기서는 후자의 방법을 사용하여 가독성을 높입니다.
     tool_rule = (
         "**[정보 부족 시 Tool 사용 규칙]**\n"
         "- 만약 실행 카드를 만들기에 정보가 부족하다고 판단되면, `recommendations`는 반드시 빈 배열(`[]`)로 설정하세요.\n"
